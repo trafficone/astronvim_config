@@ -7,7 +7,7 @@
 
     # Your fork of the AstroNvim template
     astronvim-fork = {
-      url = "github:youruser/astronvim-config";
+      url = "github:trafficone/astronvim_config";
       flake = false;
     };
   };
