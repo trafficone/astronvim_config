@@ -2,12 +2,12 @@
 -- Configuration documentation can be found with `:h astrolsp`
 -- NOTE: We highly recommend setting up the Lua Language Server (`:LspInstall lua_ls`)
 --       as this provides autocomplete and documentation while editing
-local nix_lsps = {} -- list of LSPs provided by Nix (via flake, etc.)
+local my_lsps = {} -- list of LSPs provided by Nix (via flake, etc.)
 local env_lsps = vim.env.NIX_PROVIDED_LSPS -- environment variable string
 
 if env_lsps then
   for lsp in string.gmatch(env_lsps, '([^,]+)') do
-    table.insert(nix_lsps, lsp)
+    table.insert(my_lsps, lsp)
   end
 end
 
@@ -15,7 +15,21 @@ end
 return {
   "AstroNvim/astrolsp",
   ---@type AstroLSPOpts
-  opts = {
+  opts = function(_, opts) 
+    local candidate_servers = {
+      "rust_analyzer", "pyright", "ruff", "nil_ls", 
+      "taplo", "yamlls",  "marksman",
+      -- the following lsps aren't in nixos packages
+      "lua_ls","jsonls"
+    }
+    for _, server in ipairs(candidate_servers) do
+      -- We assume the binary name matches the server name unless specified
+      local binary = (server == "nil_ls") and "nil" or server:gsub("_", "-")
+      if vim.fn.executable(binary) == 1 then
+        table.insert(my_lsps, server)
+      end
+    end
+    opts = {
     -- Configuration table of features provided by AstroLSP
     features = {
       codelens = true, -- enable/disable codelens refresh on start
@@ -44,10 +58,87 @@ return {
       -- end
     },
     -- enable servers that you already have installed without mason
-    servers = nix_lsps,
+    servers = my_lsps,
     -- customize language server configuration options passed to `lspconfig`
     ---@diagnostic disable: missing-fields
     config = {
+    rust_analyzer = {
+        settings = {
+          ["rust-analyzer"] = {
+            checkOnSave = {command = "clippy"},
+            cargo = {allFeatures=true},
+            procMacro={enable=true},
+          },
+        },
+      },
+      pyright = {
+        settings = {
+          python = {
+            analysis = {
+              typeCheckingMode = "basic",
+              autoSearchPaths = true,
+              useLibraryCodeForTypes = true,
+              disableOrganizeImports = true, -- relying on ruff for this
+            },
+          },
+        },
+      },
+      ruff = {
+        on_attach = function(client, _)
+          if client.name == "ruff" then
+            client.server_capabilities.hoverProvider = false
+          end
+        end,
+        -- The native server settings often live in init_options
+        init_options = {
+          settings = {
+            -- Global configuration for the linter
+            lint = {
+              select = { "E", "F", "I" }, -- Pycodestyle, Pyflakes, Isort
+              extendSelect = { "W", "UP" }, -- Warnings, Pyupgrade
+            },
+            -- Global configuration for the formatter
+            format = {
+              preview = true,
+            },
+          }
+        }
+      },
+      nil_ls = {
+        settings = {
+          ["nil"] = {
+            formatting = { command = {"nixpkgs-fmt"}},
+          },
+        },
+      },
+      lua_ls = {
+        settings = {
+          Lua = {
+            diagnostics = { globals = { "vim" }},
+            workspace = {
+              library = vim.api.nvim_get_runtime_file("", true),
+              checkThirdParty = false,
+            },
+          },
+        },
+      },
+      yamlls = {
+        settings = {
+          schemas = {
+            ["https://json.schemastore.org/github-workflow.json"] = "/.github/workflows/*",
+          },
+        },
+      },
+      jsonls = {
+        settings = {
+          json = {
+            schemas = require("schemastore").json.schemas(),
+            validate = { enable = true },
+          }
+        }
+      },
+      taplo = {},
+      marksman = {},
       -- clangd = { capabilities = { offsetEncoding = "utf-8" } },
     },
     -- customize how language servers are attached
@@ -105,5 +196,14 @@ return {
       -- this would disable semanticTokensProvider for all clients
       -- client.server_capabilities.semanticTokensProvider = nil
     end,
-  },
+  }
+  local nls = require("null-ls")
+  if vim.fn.executable("vale") == 1 then
+    table.insert(opts.sources, nls.builtins.diagnostics.vale.with({
+    -- You can point to a global or project-local config
+       extra_args = { "--config", os.getenv("HOME") .. "/.vale.ini" }
+    }))
+  end
+  return opts
+end,
 }
