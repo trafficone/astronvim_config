@@ -29,6 +29,7 @@ return {
         table.insert(my_lsps, server)
       end
     end
+    local nls = require("null-ls")
     opts = {
     -- Configuration table of features provided by AstroLSP
     features = {
@@ -63,11 +64,16 @@ return {
     ---@diagnostic disable: missing-fields
     config = {
     rust_analyzer = {
+        root_dir = function(fname)
+          local util = require("lspconfig.util")
+          return util.root_pattern("Cargo.toml")(fname)
+        end,
         settings = {
           ["rust-analyzer"] = {
-            checkOnSave = {command = "clippy"},
+            check = {command = "clippy"},
             cargo = {allFeatures=true},
             procMacro={enable=true},
+            files={watcher="client"},
           },
         },
       },
@@ -196,13 +202,13 @@ return {
       -- this would disable semanticTokensProvider for all clients
       -- client.server_capabilities.semanticTokensProvider = nil
     end,
+    sources = {}
   }
-  local nls = require("null-ls")
   if vim.fn.executable("vale") == 1 then
-    table.insert(opts.sources, nls.builtins.diagnostics.vale.with({
+    table.insert(opts.sources, nls.builtins.diagnostics.vale)--.with({
     -- You can point to a global or project-local config
-       extra_args = { "--config", os.getenv("HOME") .. "/.vale.ini" }
-    }))
+    --   extra_args = { "--config", os.getenv("HOME") .. "/.vale.ini" }
+    --}))
   end
   return opts
 end,
